@@ -9,6 +9,22 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 type Tab = 'reading' | 'tasks' | 'quiz';
 
+const ReasonBadge = ({ reason }: { reason?: string }) => {
+    if (!reason) return null;
+    return (
+        <div className="group relative inline-block ml-2 align-middle">
+            <span className="cursor-help inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-sm font-bold border border-indigo-200 hover:bg-indigo-200 transition-colors">
+                ?
+            </span>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+                <div className="font-semibold mb-1 text-xs uppercase text-indigo-300">Why this matters</div>
+                {reason}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
+            </div>
+        </div>
+    );
+};
+
 export default function WeekPage() {
     const params = useParams();
     const searchParams = useSearchParams();
@@ -211,6 +227,7 @@ export default function WeekPage() {
 
                 <h1 className="text-4xl font-bold text-gray-900 mb-2">
                     Week {weekNumber}: {hasReading ? content.reading_material.title : 'Loading...'}
+                    {hasReading && <ReasonBadge reason={content.reading_material.reason} />}
                 </h1>
             </div>
 
@@ -395,7 +412,10 @@ export default function WeekPage() {
                                 <div key={task.id} className="border border-gray-200 rounded-lg p-6 hover:border-blue-500 transition">
                                     <div className="flex items-start justify-between mb-4">
                                         <div>
-                                            <h3 className="text-xl font-bold text-gray-900 mb-2">{task.title}</h3>
+                                            <h3 className="text-xl font-bold text-gray-900 mb-2">
+                                                {task.title}
+                                                <ReasonBadge reason={task.reason} />
+                                            </h3>
                                             <div className="flex gap-4 text-sm text-gray-600">
                                                 <span className={`px-3 py-1 rounded-full ${task.difficulty === 'easy' ? 'bg-green-100 text-green-800' :
                                                     task.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-800' :

@@ -37,6 +37,7 @@ export interface WeeklyReading {
     content: string;
     key_concepts: string[];
     resources: string[];
+    reason?: string;
 }
 
 export interface CodingTask {
@@ -47,6 +48,7 @@ export interface CodingTask {
     estimated_time: string;
     files_to_modify: string[];
     hints: string[];
+    reason?: string;
 }
 
 export interface QuizQuestion {

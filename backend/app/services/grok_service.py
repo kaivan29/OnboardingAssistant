@@ -254,17 +254,51 @@ The plan should:
             elif "```" in response:
                 json_str = response.split("```")[1].split("```")[0].strip()
                 plan = json.loads(json_str)
-            else:
                 raise ValueError("Could not parse JSON from Grok response")
         
         return plan
     
+    async def generate_reasoning(
+        self,
+        expectation_context: str,
+        item_type: str,
+        item_title: str,
+        item_description: str
+    ) -> str:
+        """Generate a short reason for why this item was assigned based on expectations"""
+        prompt = f"""Explain why this {item_type} is relevant for the candidate based on these expectations:
+
+Expectations:
+{expectation_context}
+
+Item: {item_title}
+Description: {item_description}
+
+Provide a ONE SENTENCE reason (under 30 words) starting with "Relevant because..." or "This helps you..."."""
+
+        messages = [
+            {"role": "system", "content": "You are a mentor explaining the 'why' behind a learning plan."},
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = await self._make_request(messages, temperature=0.7, model=self.resume_model)
+        return response.strip()
+
     async def generate_weekly_reading(
         self,
         week_plan: Dict[str, Any],
-        codebase_analysis: Dict[str, Any]
+        codebase_analysis: Dict[str, Any],
+        expectation_context: str = None
     ) -> Dict[str, Any]:
         """Generate AI-powered wiki-style reading material for a week"""
+        reason_prompt = ""
+        if expectation_context:
+            reason_prompt = f"""
+Expectation Context:
+{expectation_context}
+
+Also, add a "reason" field to the JSON explaining why this reading is relevant to the expectation."""
+
         prompt = f"""Create comprehensive reading material for this week of the onboarding plan:
 
 Week Plan:
@@ -272,13 +306,15 @@ Week Plan:
 
 Codebase Context:
 {json.dumps(codebase_analysis, indent=2)}
+{reason_prompt}
 
 Generate detailed reading material in JSON format:
 {{
     "title": "Week title",
     "content": "Comprehensive wiki-style content in markdown format covering all topics. Include code examples, diagrams (as ASCII), and explanations. Make it 1500-2000 words.",
     "key_concepts": ["concept1", "concept2", ...],
-    "resources": ["resource1 with URL", "resource2 with URL", ...]
+    "resources": ["resource1 with URL", "resource2 with URL", ...],
+    "reason": "One sentence explaining relevance to the expectation"
 }}
 
 IMPORTANT: Return ONLY valid JSON, no markdown code blocks or extra text.
@@ -297,9 +333,18 @@ Make the content educational, engaging, and specific to the codebase."""
     async def generate_coding_tasks(
         self,
         week_plan: Dict[str, Any],
-        codebase_analysis: Dict[str, Any]
+        codebase_analysis: Dict[str, Any],
+        expectation_context: str = None
     ) -> List[Dict[str, Any]]:
         """Generate coding tasks for the week"""
+        reason_prompt = ""
+        if expectation_context:
+            reason_prompt = f"""
+Expectation Context:
+{expectation_context}
+
+For EACH task, add a "reason" field explaining why it is relevant to the expectation."""
+
         prompt = f"""Create 3-5 coding tasks for this week of the onboarding plan:
 
 Week Plan:
@@ -307,6 +352,7 @@ Week Plan:
 
 Codebase Context:
 {json.dumps(codebase_analysis, indent=2)}
+{reason_prompt}
 
 Generate tasks in JSON format:
 {{
@@ -318,7 +364,8 @@ Generate tasks in JSON format:
             "difficulty": "easy|medium|hard",
             "estimated_time": "30 mins - 2 hours",
             "files_to_modify": ["file1.py", "file2.js"],
-            "hints": ["hint1", "hint2", ...]
+            "hints": ["hint1", "hint2", ...],
+            "reason": "Relevance to expectation"
         }},
         ...
     ]
@@ -350,7 +397,12 @@ Tasks should:
                 result = json.loads(json_str)
                 return result.get("tasks", [])
             else:
-                raise ValueError("Could not parse JSON from Grok response")
+                try:
+                     # Parse using parse_json_response just in case
+                    result = self._parse_json_response(response)
+                    return result.get("tasks", [])
+                except:
+                     raise ValueError("Could not parse JSON from Grok response")
     
     async def generate_quiz(
         self,

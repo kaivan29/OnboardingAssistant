@@ -48,6 +48,7 @@ class WeeklyReadingMaterial(BaseModel):
     content: str
     key_concepts: List[str]
     resources: List[str]
+    reason: Optional[str] = None
 
 
 class CodingTask(BaseModel):
@@ -58,6 +59,7 @@ class CodingTask(BaseModel):
     estimated_time: str
     files_to_modify: List[str]
     hints: List[str]
+    reason: Optional[str] = None
 
 
 class QuizQuestion(BaseModel):

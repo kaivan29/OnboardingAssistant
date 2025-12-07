@@ -5,6 +5,10 @@ from typing import List, Optional
 from datetime import datetime
 import PyPDF2
 import io
+import asyncio
+from pathlib import Path
+import copy
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_db, Candidate, CodebaseConfig, CodebaseAnalysis, LearningPlan, WeeklyContent, Progress, MasterPlan
 from app.schema import (
@@ -465,6 +469,28 @@ async def get_weekly_content(
     )
     weekly_content = result.scalar_one_or_none()
     
+    # Get candidate to determine expectations
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    
+    expectation_context = None
+    if candidate and candidate.resume_analysis:
+        try:
+            level = candidate.resume_analysis.get("experience_level", "junior").lower()
+            if "senior" in level or "staff" in level or "lead" in level:
+                prompt_file = "senior_engineer_prompt.md"
+            else:
+                prompt_file = "junior_engineer_prompt.md"
+                
+            base_path = Path(__file__).parent.parent / "expectation_prompts"
+            prompt_path = base_path / prompt_file
+            
+            if prompt_path.exists():
+                with open(prompt_path, "r") as f:
+                    expectation_context = f.read()
+        except Exception as e:
+            print(f"Error loading expectation: {e}")
+
     # If weekly content doesn't exist or is empty, try to get from master plan first
     if not weekly_content or not weekly_content.reading_material or not weekly_content.coding_tasks:
         print(f"📝 Getting weekly content for week {week_number}...")
@@ -491,6 +517,39 @@ async def get_weekly_content(
                 reading = week_content.get("reading_material", {})
                 tasks = week_content.get("coding_tasks", [])
                 quiz = week_content.get("quiz", [])
+                
+                # If we have expectations, ensure we have reasons
+                if expectation_context:
+                    from app.services.grok_service import grok_service
+                    
+                    # Generate reasoning for reading if missing
+                    if reading and not reading.get("reason"):
+                        print("  🧠 Generating reasoning for reading material...")
+                        reading["reason"] = await grok_service.generate_reasoning(
+                            expectation_context, 
+                            "reading material", 
+                            reading.get("title", "Weekly Reading"), 
+                            reading.get("content", "")[:200]
+                        )
+                    
+                    # Generate reasoning for tasks if missing
+                    reasoning_tasks = []
+                    for task in tasks:
+                        if not task.get("reason"):
+                            reasoning_tasks.append(task)
+                    
+                    if reasoning_tasks:
+                        print(f"  🧠 Generating reasoning for {len(reasoning_tasks)} tasks...")
+                        # Process in parallel
+                        async def update_task_reason(t):
+                            t["reason"] = await grok_service.generate_reasoning(
+                                expectation_context,
+                                "coding task",
+                                t.get("title", "Task"),
+                                t.get("description", "")[:200]
+                            )
+                        
+                        await asyncio.gather(*[update_task_reason(t) for t in reasoning_tasks])
             else:
                 raise HTTPException(status_code=404, detail=f"Week {week_number} not found in master plan")
         else:
@@ -516,10 +575,10 @@ async def get_weekly_content(
             from app.services.grok_service import grok_service
             
             print(f"  📚 Generating reading material...")
-            reading = await grok_service.generate_weekly_reading(week_data, codebase_analysis)
+            reading = await grok_service.generate_weekly_reading(week_data, codebase_analysis, expectation_context)
             
             print(f"  💻 Generating coding tasks...")
-            tasks = await grok_service.generate_coding_tasks(week_data, codebase_analysis)
+            tasks = await grok_service.generate_coding_tasks(week_data, codebase_analysis, expectation_context)
             
             print(f"  📝 Generating quiz...")
             quiz = await grok_service.generate_quiz(week_data, reading.get("content", ""))
@@ -544,6 +603,69 @@ async def get_weekly_content(
         
         print(f"✅ Weekly content saved for week {week_number}")
     
+    # Backfill reasoning if missing (for existing content)
+    if weekly_content and expectation_context:
+        updated = False
+        reading = weekly_content.reading_material
+        tasks = weekly_content.coding_tasks
+        
+        # Check reading
+        if reading and not reading.get("reason"):
+            print("  🧠 Backfilling reasoning for reading material...")
+            from app.services.grok_service import grok_service
+            # Create a copy to ensure SQLAlchemy detects change
+            new_reading = copy.deepcopy(reading)
+            new_reading["reason"] = await grok_service.generate_reasoning(
+                expectation_context, 
+                "reading material", 
+                new_reading.get("title", "Weekly Reading"), 
+                new_reading.get("content", "")[:200]
+            )
+            weekly_content.reading_material = new_reading
+            flag_modified(weekly_content, "reading_material")
+            updated = True
+            
+        # Check tasks
+        if tasks:
+            tasks_updated = False
+            reasoning_tasks = []
+            
+            for i, task in enumerate(tasks):
+                if not task.get("reason"):
+                    reasoning_tasks.append((i, task))
+            
+            if reasoning_tasks:
+                print(f"  🧠 Backfilling reasoning for {len(reasoning_tasks)} tasks...")
+                from app.services.grok_service import grok_service
+                
+                # Create copy of tasks
+                new_tasks = copy.deepcopy(tasks)
+                
+                async def update_task_backfill(idx, t):
+                    t["reason"] = await grok_service.generate_reasoning(
+                        expectation_context,
+                        "coding task",
+                        t.get("title", "Task"),
+                        t.get("description", "")[:200]
+                    )
+                    return idx, t
+                
+                results = await asyncio.gather(*[update_task_backfill(i, new_tasks[i]) for i, _ in reasoning_tasks])
+                
+                # Update tasks list
+                for idx, t in results:
+                    new_tasks[idx] = t
+                    
+                weekly_content.coding_tasks = new_tasks
+                flag_modified(weekly_content, "coding_tasks")
+                updated = True
+
+        if updated:
+            db.add(weekly_content)
+            await db.commit()
+            await db.refresh(weekly_content)
+            print("  ✅ Reasoning backfilled")
+
     return WeeklyContentResponse(
         week_number=weekly_content.week_number,
         reading_material=weekly_content.reading_material,
