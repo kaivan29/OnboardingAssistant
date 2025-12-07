@@ -224,4 +224,31 @@ export const api = {
 
         return response.json();
     },
+
+    async getCodebaseFiles(codebaseId: string, path: string = ''): Promise<{ files: FileNode[] }> {
+        const response = await fetch(`${API_BASE_URL}/api/codebase/${codebaseId}/files?path=${encodeURIComponent(path)}`);
+
+        if (!response.ok) {
+            throw new Error('Failed to get codebase files');
+        }
+
+        return response.json();
+    },
+
+    async getFileContent(codebaseId: string, path: string): Promise<{ content: string }> {
+        const response = await fetch(`${API_BASE_URL}/api/codebase/${codebaseId}/content?path=${encodeURIComponent(path)}`);
+
+        if (!response.ok) {
+            throw new Error('Failed to get file content');
+        }
+
+        return response.json();
+    },
 };
+
+export interface FileNode {
+    name: string;
+    path: string;
+    type: 'file' | 'dir';
+    size: number;
+}

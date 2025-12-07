@@ -726,7 +726,42 @@ async def get_master_plan_endpoint(codebase_id: str, db: AsyncSession = Depends(
     
     master_plan = await plan_template_service.get_master_plan(codebase_id, db)
     
-    if not master_plan:
-        raise HTTPException(status_code=404, detail="No master plan found for this codebase")
-    
     return master_plan
+
+
+@router.get("/codebase/{codebase_id}/files")
+async def get_codebase_files(codebase_id: str, path: str = "", db: AsyncSession = Depends(get_db)):
+    """List files in the codebase"""
+    from app.services.file_service import file_service
+    
+    # Ensure repo exists (lazy clone if needed)
+    # We need to look up the URL from DB if we want to be 100% correct, 
+    # but for optimization we can check if it exists first.
+    
+    try:
+        files = file_service.list_files(codebase_id, path)
+        return {"files": files}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/codebase/{codebase_id}/content")
+async def get_file_content(codebase_id: str, path: str, db: AsyncSession = Depends(get_db)):
+    """Get file content"""
+    from app.services.file_service import file_service
+    
+    # Check if repo exists - if not, we need to clone it. 
+    # This might block, so ideally should be done async or beforehand.
+    # For now, we assume it's initialized via the Ensure step below.
+    
+    try:
+        content = file_service.get_file_content(codebase_id, path)
+        if content is None:
+            raise HTTPException(status_code=404, detail="File not found")
+        return {"content": content}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

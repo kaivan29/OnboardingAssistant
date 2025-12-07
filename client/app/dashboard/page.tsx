@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
 import { Brain, Code2, GitBranch } from 'lucide-react';
 import { api, LearningPlan } from '@/lib/api';
+import CodebaseExplorer from '@/components/CodebaseExplorer';
 
 export default function Dashboard() {
     const router = useRouter();
@@ -14,6 +15,7 @@ export default function Dashboard() {
     const [courseProgress] = useState(15); // Initial progress
     const [tasksDue] = useState(5); // Example tasks due
     const [loadingStatus, setLoadingStatus] = useState('Checking resume analysis...');
+    const [activeTab, setActiveTab] = useState<'path' | 'codebase'>('path');
 
     useEffect(() => {
         const id = localStorage.getItem('candidateId');
@@ -33,7 +35,7 @@ export default function Dashboard() {
                 setLoadingStatus('Analyzing your resume with AI...');
                 let analysisComplete = false;
                 let attempts = 0;
-                const maxAttempts = 60; // 2 minutes max
+                const maxAttempts = 300; // Increased timeout
 
                 while (!analysisComplete && attempts < maxAttempts) {
                     const status = await api.getCandidateStatus(candidateIdNum);
@@ -91,7 +93,11 @@ export default function Dashboard() {
         );
     }
 
-    if (!plan) {
+    if (!plan && activeTab === 'path') {
+        // Only show this if we are in path mode and failed to load plan, 
+        // but actually we handled loading state above. 
+        // If we are here, loading is false, but plan is null.
+        // This implies error state.
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
@@ -107,7 +113,7 @@ export default function Dashboard() {
         );
     }
 
-    const userFirstName = "User"; // You can extract this from candidate data if available
+    const userFirstName = "User";
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -139,7 +145,6 @@ export default function Dashboard() {
             <main className="max-w-6xl mx-auto px-6 lg:px-12 py-12">
                 {/* Welcome Section */}
                 <div className="flex items-center gap-12 mb-16">
-                    {/* Illustration */}
                     <div className="hidden lg:flex items-center justify-center w-64 h-48 relative">
                         <div className="absolute w-24 h-24 border-2 border-black rounded-xl transform -rotate-12 bg-white flex items-center justify-center">
                             <Code2 className="w-10 h-10 text-gray-800" />
@@ -152,18 +157,15 @@ export default function Dashboard() {
                         </div>
                     </div>
 
-                    {/* Welcome Text */}
                     <div className="flex-1">
                         <h1 className="text-4xl font-semibold text-black mb-3">
                             Welcome back, {userFirstName}!
                         </h1>
                         <p className="text-gray-600 text-lg mb-6">
                             Continue your learning journey today. You have{" "}
-                            <span className="font-semibold">{tasksDue} tasks due</span> this
-                            week.
+                            <span className="font-semibold">{tasksDue} tasks due</span> this week.
                         </p>
 
-                        {/* Progress Bar */}
                         <div className="max-w-md">
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="text-sm font-medium text-gray-700">
@@ -178,79 +180,83 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Weekly Modules Section */}
-                <section>
-                    <h2 className="text-2xl font-semibold text-black mb-6">
-                        Your Weekly Modules
-                    </h2>
+                {/* Tabs */}
+                <div className="flex items-center space-x-8 border-b border-gray-200 mb-8">
+                    <button
+                        onClick={() => setActiveTab('path')}
+                        className={`pb-3 text-sm font-medium transition-all border-b-2 ${activeTab === 'path'
+                                ? 'border-black text-black'
+                                : 'border-transparent text-gray-500 hover:text-gray-800'
+                            }`}
+                    >
+                        Learning Path
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('codebase')}
+                        className={`pb-3 text-sm font-medium transition-all border-b-2 ${activeTab === 'codebase'
+                                ? 'border-black text-black'
+                                : 'border-transparent text-gray-500 hover:text-gray-800'
+                            }`}
+                        title="Browse the RocksDB codebase"
+                    >
+                        Codebase Browser
+                    </button>
+                </div>
 
-                    {/* Show skeleton/disabled state while loading */}
-                    {!plan ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {[1, 2, 3, 4].map((week) => (
-                                <div
-                                    key={week}
-                                    className="bg-gray-100 border border-gray-200 rounded-xl p-6 opacity-50 cursor-not-allowed"
-                                >
-                                    <div className="flex items-center justify-between mb-4">
-                                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                                            Week {week}
-                                        </span>
-                                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200">
-                                            <span className="text-sm font-bold text-gray-400">○</span>
-                                        </div>
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-gray-400 mb-3">
-                                        Loading...
-                                    </h3>
-                                    <div className="space-y-2">
-                                        <div className="text-xs text-gray-400">
-                                            Generating content...
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {plan.weeks.map((week, index) => (
-                                <button
-                                    key={week.week_number}
-                                    onClick={() => router.push(`/dashboard/week/${week.week_number}?candidateId=${candidateId}`)}
-                                    className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all text-left group"
-                                >
-                                    <div className="flex items-center justify-between mb-4">
-                                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                            Week {week.week_number}
-                                        </span>
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${index === 0 ? 'bg-blue-100' : 'bg-gray-100'
-                                            }`}>
-                                            <span className={`text-sm font-bold ${index === 0 ? 'text-blue-600' : 'text-gray-400'
-                                                }`}>
-                                                {index === 0 ? '→' : '○'}
+                {activeTab === 'path' ? (
+                    <section>
+                        <h2 className="text-2xl font-semibold text-black mb-6">
+                            Your Weekly Modules
+                        </h2>
+                        {!plan ? (
+                            <div className="text-center text-gray-500 py-12">
+                                Failed to load plan. Please try refreshing.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {plan.weeks.map((week, index) => (
+                                    <button
+                                        key={week.week_number}
+                                        onClick={() => router.push(`/dashboard/week/${week.week_number}?candidateId=${candidateId}`)}
+                                        className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all text-left group"
+                                    >
+                                        <div className="flex items-center justify-between mb-4">
+                                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                                Week {week.week_number}
                                             </span>
-                                        </div>
-                                    </div>
-
-                                    <h3 className="text-lg font-semibold text-black mb-3 group-hover:text-blue-600 transition-colors">
-                                        {week.title}
-                                    </h3>
-
-                                    <div className="space-y-2">
-                                        <div className="text-xs text-gray-600">
-                                            <span className="font-semibold">{week.objectives.length}</span> objectives
-                                        </div>
-                                        {week.topics && (
-                                            <div className="text-xs text-gray-600">
-                                                <span className="font-semibold">{week.topics.length}</span> topics
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${index === 0 ? 'bg-blue-100' : 'bg-gray-100'
+                                                }`}>
+                                                <span className={`text-sm font-bold ${index === 0 ? 'text-blue-600' : 'text-gray-400'
+                                                    }`}>
+                                                    {index === 0 ? '→' : '○'}
+                                                </span>
                                             </div>
-                                        )}
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </section>
+                                        </div>
+
+                                        <h3 className="text-lg font-semibold text-black mb-3 group-hover:text-blue-600 transition-colors">
+                                            {week.title}
+                                        </h3>
+
+                                        <div className="space-y-2">
+                                            <div className="text-xs text-gray-600">
+                                                <span className="font-semibold">{week.objectives.length}</span> objectives
+                                            </div>
+                                            {week.topics && (
+                                                <div className="text-xs text-gray-600">
+                                                    <span className="font-semibold">{week.topics.length}</span> topics
+                                                </div>
+                                            )}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </section>
+                ) : (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <CodebaseExplorer codebaseId="rocksdb" />
+                    </div>
+                )}
             </main>
         </div>
     );
