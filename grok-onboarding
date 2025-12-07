@@ -75,14 +75,21 @@ start_servers() {
     else
         echo -e "${YELLOW}[INIT]${NC} Starting Backend Neural Core..."
         cd "$APP_ROOT/backend" || exit 1
-        if [ -f "venv/bin/activate" ]; then
-            source venv/bin/activate
-        else 
-            echo -e "${RED}[ERROR]${NC} Python virtual environment not found in $APP_ROOT/backend/venv"
+        
+        if [ ! -f ".env" ]; then
+            echo -e "${RED}[ERROR]${NC} Configuration matrix (.env) missing in backend."
+            echo -e "${YELLOW}[HINT]${NC} Copy .env.example to .env and configure authentication tokens."
             exit 1
         fi
-        # Run in background, silence output or redirect to log
-        nohup uvicorn main:app --reload --port 8000 > "$APP_ROOT/backend/server.log" 2>&1 &
+
+        if [ -f "venv/bin/uvicorn" ]; then
+            # Run using direct path to venv binary
+            nohup ./venv/bin/uvicorn main:app --reload --port 8000 > "$APP_ROOT/backend/server.log" 2>&1 &
+        else 
+            echo -e "${RED}[ERROR]${NC} Neural Core executable (uvicorn) not found in venv."
+            exit 1
+        fi
+        
         wait_for_service 8000 "Backend"
     fi
 
