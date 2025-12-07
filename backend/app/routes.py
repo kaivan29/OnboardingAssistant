@@ -465,9 +465,9 @@ async def get_weekly_content(
         select(WeeklyContent).where(
             WeeklyContent.learning_plan_id == learning_plan.id,
             WeeklyContent.week_number == week_number
-        )
+        ).limit(1)
     )
-    weekly_content = result.scalar_one_or_none()
+    weekly_content = result.scalars().first()
     
     # Get candidate to determine expectations
     result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
@@ -702,14 +702,17 @@ async def update_progress(
         progress_record.reading_completed = 1 if progress.reading_completed else 0
     
     if progress.task_id is not None:
-        tasks = progress_record.tasks_completed or []
+        # Clone list to ensure change detection
+        tasks = list(progress_record.tasks_completed) if progress_record.tasks_completed else []
         if progress.task_id not in tasks:
             tasks.append(progress.task_id)
-        progress_record.tasks_completed = tasks
+            progress_record.tasks_completed = tasks
+            flag_modified(progress_record, "tasks_completed")
     
     if progress.quiz_answers is not None:
         progress_record.quiz_answers = progress.quiz_answers
         progress_record.quiz_score = len([a for a in progress.quiz_answers if a is not None])
+        flag_modified(progress_record, "quiz_answers")
     
     await db.commit()
     
@@ -754,6 +757,7 @@ async def mark_chapter_complete(
     # Add chapter to completed list if not already there
     if chapter_number not in progress.reading_completed:
         progress.reading_completed.append(chapter_number)
+        flag_modified(progress, "reading_completed")
         progress.updated_at = datetime.utcnow()
     
     await db.commit()
@@ -793,7 +797,8 @@ async def get_week_progress(
         "week_number": week_number,
         "completed_chapters": progress.reading_completed or [],
         "completed_tasks": progress.tasks_completed or [],
-        "quiz_score": progress.quiz_score
+        "quiz_score": progress.quiz_score,
+        "quiz_answers": progress.quiz_answers
     }
 
 
@@ -886,4 +891,118 @@ async def get_file_content(codebase_id: str, path: str, db: AsyncSession = Depen
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid path")
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/progress/{candidate_id}/overall")
+async def get_overall_progress(candidate_id: int, db: AsyncSession = Depends(get_db)):
+    """Calculate overall course progress based on completed weeks"""
+    import traceback
+    try:
+        # Get Learning Plan to know total weeks
+        result = await db.execute(
+            select(LearningPlan)
+            .where(LearningPlan.candidate_id == candidate_id)
+            .order_by(desc(LearningPlan.created_at))
+            .limit(1)
+        )
+        plan = result.scalar_one_or_none()
+        
+        if not plan:
+            return {"progress": 0, "tasks_completed": 0, "total_weeks": 4}
+        
+        total_weeks = len(plan.plan_data.get("weeks", []))
+        if total_weeks == 0:
+            return {"progress": 0, "tasks_completed": 0, "total_weeks": 0}
+        
+        total_progress_percent = 0
+        total_tasks_done = 0
+        weeks_progress = []
+        
+        print(f"DEBUG: Calculating progress for Candidate {candidate_id}")
+        print(f"DEBUG: Plan ID: {plan.id}, Total Weeks: {total_weeks}")
+
+        # Calculate progress for each week
+        for week in plan.plan_data.get("weeks", []):
+            week_num = week.get("week_number")
+            
+            # Get Content
+            result = await db.execute(
+                select(WeeklyContent).where(
+                    WeeklyContent.learning_plan_id == plan.id,
+                    WeeklyContent.week_number == week_num
+                ).limit(1)
+            )
+            content = result.scalars().first()
+            
+            # Get Progress
+            result = await db.execute(
+                select(Progress).where(
+                    Progress.candidate_id == candidate_id,
+                    Progress.week_number == week_num
+                ).limit(1)
+            )
+            progress = result.scalars().first()
+            
+            week_percent = 0
+            if content and progress:
+                # 1. Reading Progress (30%)
+                reading_material = content.reading_material or {}
+                reading_text = reading_material.get("content", "")
+                
+                # Simple heuristic: count H2 headers as chapters (same as frontend)
+                # Default to 1 if no headers found but content exists
+                estimated_chapters = max(1, reading_text.count("## "))
+                
+                # Estimate chapters logic
+                import math
+                sections = reading_text.count("## ")
+                total_chapters = max(1, math.ceil(sections / 4)) if sections > 0 else 1
+                
+                completed_chapters = len(progress.reading_completed) if isinstance(progress.reading_completed, list) else 0
+                reading_score = min(1.0, completed_chapters / total_chapters)
+                
+                # 2. Tasks Progress (40%)
+                coding_tasks = content.coding_tasks or []
+                total_tasks = len(coding_tasks)
+                completed_tasks = len(progress.tasks_completed) if progress.tasks_completed else 0
+                tasks_score = 0
+                if total_tasks > 0:
+                    tasks_score = min(1.0, completed_tasks / total_tasks)
+                
+                total_tasks_done += completed_tasks
+                
+                # 3. Quiz Progress (30%)
+                quiz = content.quiz or []
+                total_quiz = len(quiz)
+                # Quiz score is number of correct answers. 
+                quiz_score_val = progress.quiz_score or 0
+                quiz_score = 0
+                if total_quiz > 0:
+                    quiz_score = min(1.0, quiz_score_val / total_quiz)
+                    
+                week_percent = (reading_score * 30) + (tasks_score * 40) + (quiz_score * 30)
+                print(f"DEBUG: Week {week_num} Score: {week_percent}")
+                print(f"DEBUG:   Reading: {completed_chapters}/{total_chapters} ({reading_score*100:.1f}%) -> {reading_score*30:.1f} pts")
+                print(f"DEBUG:   Tasks: {completed_tasks}/{total_tasks} ({tasks_score*100:.1f}%) -> {tasks_score*40:.1f} pts")
+                print(f"DEBUG:   Quiz: {quiz_score_val}/{total_quiz} ({quiz_score*100:.1f}%) -> {quiz_score*30:.1f} pts")
+                
+            total_progress_percent += week_percent
+            
+            weeks_progress.append({
+                "week_number": week_num,
+                "percent": round(week_percent),
+                "is_complete": week_percent >= 95
+            })
+
+        overall_progress = round(total_progress_percent / total_weeks)
+        
+        return {
+            "progress": overall_progress,
+            "tasks_completed": total_tasks_done,
+            "total_weeks": total_weeks,
+            "weeks_progress": weeks_progress
+        }
+    except Exception as e:
+        print(f"ERROR calculating progress: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

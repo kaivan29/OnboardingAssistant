@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Progress } from '@/components/ui/progress';
-import { Brain, Code2, GitBranch } from 'lucide-react';
+import { Brain, Code2, GitBranch, Check } from 'lucide-react';
 import { api, LearningPlan } from '@/lib/api';
 import CodebaseExplorer from '@/components/CodebaseExplorer';
 
@@ -12,10 +12,22 @@ export default function Dashboard() {
     const [plan, setPlan] = useState<LearningPlan | null>(null);
     const [loading, setLoading] = useState(true);
     const [candidateId, setCandidateId] = useState<number | null>(null);
-    const [courseProgress] = useState(15); // Initial progress
+    const [courseProgress, setCourseProgress] = useState(0);
+    const [weekProgress, setWeekProgress] = useState<{ week_number: number; percent: number; is_complete: boolean }[]>([]);
     const [tasksDue] = useState(5); // Example tasks due
     const [loadingStatus, setLoadingStatus] = useState('Checking resume analysis...');
     const [activeTab, setActiveTab] = useState<'path' | 'codebase'>('path');
+
+    useEffect(() => {
+        if (candidateId) {
+            api.getCourseProgress(candidateId).then(data => {
+                setCourseProgress(data.progress);
+                if (data.weeks_progress) {
+                    setWeekProgress(data.weeks_progress);
+                }
+            }).catch(e => console.error("Failed to fetch progress", e));
+        }
+    }, [candidateId]);
 
     useEffect(() => {
         const id = localStorage.getItem('candidateId');
@@ -185,8 +197,8 @@ export default function Dashboard() {
                     <button
                         onClick={() => setActiveTab('path')}
                         className={`pb-3 text-sm font-medium transition-all border-b-2 ${activeTab === 'path'
-                                ? 'border-black text-black'
-                                : 'border-transparent text-gray-500 hover:text-gray-800'
+                            ? 'border-black text-black'
+                            : 'border-transparent text-gray-500 hover:text-gray-800'
                             }`}
                     >
                         Learning Path
@@ -194,8 +206,8 @@ export default function Dashboard() {
                     <button
                         onClick={() => setActiveTab('codebase')}
                         className={`pb-3 text-sm font-medium transition-all border-b-2 ${activeTab === 'codebase'
-                                ? 'border-black text-black'
-                                : 'border-transparent text-gray-500 hover:text-gray-800'
+                            ? 'border-black text-black'
+                            : 'border-transparent text-gray-500 hover:text-gray-800'
                             }`}
                         title="Browse the RocksDB codebase"
                     >
@@ -214,41 +226,83 @@ export default function Dashboard() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {plan.weeks.map((week, index) => (
-                                    <button
-                                        key={week.week_number}
-                                        onClick={() => router.push(`/dashboard/week/${week.week_number}?candidateId=${candidateId}`)}
-                                        className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all text-left group"
-                                    >
-                                        <div className="flex items-center justify-between mb-4">
-                                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                                Week {week.week_number}
-                                            </span>
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${index === 0 ? 'bg-blue-100' : 'bg-gray-100'
-                                                }`}>
-                                                <span className={`text-sm font-bold ${index === 0 ? 'text-blue-600' : 'text-gray-400'
+                                {plan.weeks.map((week) => {
+                                    const progressData = weekProgress.find(wp => wp.week_number === week.week_number);
+                                    const isComplete = progressData?.is_complete;
+
+                                    // Determine if this is the active week (first incomplete week)
+                                    let isActive = false;
+                                    if (weekProgress.length > 0) {
+                                        const sortedProgress = [...weekProgress].sort((a, b) => a.week_number - b.week_number);
+                                        const firstIncomplete = sortedProgress.find(w => !w.is_complete);
+                                        isActive = firstIncomplete ? week.week_number === firstIncomplete.week_number : false;
+                                    } else {
+                                        isActive = week.week_number === 1;
+                                    }
+
+                                    return (
+                                        <button
+                                            key={week.week_number}
+                                            onClick={() => router.push(`/dashboard/week/${week.week_number}?candidateId=${candidateId}`)}
+                                            className={`border rounded-xl p-6 hover:shadow-lg transition-all text-left group relative overflow-hidden ${isComplete ? 'bg-green-50 border-green-200' :
+                                                isActive ? 'bg-white border-blue-200 ring-2 ring-blue-50' :
+                                                    'bg-white border-gray-200'
+                                                }`}
+                                        >
+                                            <div className="flex items-center justify-between mb-4">
+                                                <span className={`text-xs font-semibold uppercase tracking-wide ${isActive ? 'text-blue-600' : 'text-gray-500'
                                                     }`}>
-                                                    {index === 0 ? '→' : '○'}
+                                                    Week {week.week_number}
                                                 </span>
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isComplete ? 'bg-green-100' :
+                                                    isActive ? 'bg-blue-100' : 'bg-gray-100'
+                                                    }`}>
+                                                    {isComplete ? (
+                                                        <Check className="w-5 h-5 text-green-600" />
+                                                    ) : (
+                                                        <span className={`text-sm font-bold ${isActive ? 'text-blue-600' : 'text-gray-400'
+                                                            }`}>
+                                                            {isActive ? '→' : '○'}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
 
-                                        <h3 className="text-lg font-semibold text-black mb-3 group-hover:text-blue-600 transition-colors">
-                                            {week.title}
-                                        </h3>
+                                            <h3 className="text-lg font-semibold text-black mb-3 group-hover:text-blue-600 transition-colors">
+                                                {week.title}
+                                            </h3>
 
-                                        <div className="space-y-2">
-                                            <div className="text-xs text-gray-600">
-                                                <span className="font-semibold">{week.objectives.length}</span> objectives
-                                            </div>
-                                            {week.topics && (
+                                            <div className="space-y-2">
                                                 <div className="text-xs text-gray-600">
-                                                    <span className="font-semibold">{week.topics.length}</span> topics
+                                                    <span className="font-semibold">{week.objectives.length}</span> objectives
+                                                </div>
+                                                {week.topics && (
+                                                    <div className="text-xs text-gray-600">
+                                                        <span className="font-semibold">{week.topics.length}</span> topics
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {progressData && (
+                                                <div className="mt-4">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-[10px] font-medium text-gray-500">Progress</span>
+                                                        <span className={`text-[10px] font-bold ${isComplete ? 'text-green-600' : isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+                                                            {progressData.percent}%
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                                        <div
+                                                            className={`h-1.5 rounded-full transition-all duration-500 ${isComplete ? 'bg-green-500' : isActive ? 'bg-blue-500' : 'bg-gray-300'
+                                                                }`}
+                                                            style={{ width: `${progressData.percent}%` }}
+                                                        ></div>
+                                                    </div>
                                                 </div>
                                             )}
-                                        </div>
-                                    </button>
-                                ))}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         )}
                     </section>

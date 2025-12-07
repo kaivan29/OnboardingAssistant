@@ -36,6 +36,7 @@ export default function WeekPage() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<Tab>('reading');
     const [quizAnswers, setQuizAnswers] = useState<{ [key: string]: number }>({});
+    const [rawQuizAnswers, setRawQuizAnswers] = useState<number[] | null>(null);
     const [quizSubmitted, setQuizSubmitted] = useState(false);
     const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
 
@@ -43,6 +44,18 @@ export default function WeekPage() {
     const [currentChapter, setCurrentChapter] = useState(0);
     const [completedChapters, setCompletedChapters] = useState<number[]>([]);
     const [chapters, setChapters] = useState<{ title: string; content: string }[]>([]);
+
+    useEffect(() => {
+        if (content && rawQuizAnswers) {
+            const answers: Record<string, number> = {};
+            content.quiz.forEach((q, idx) => {
+                if (idx < rawQuizAnswers.length) {
+                    answers[q.id] = rawQuizAnswers[idx];
+                }
+            });
+            setQuizAnswers(answers);
+        }
+    }, [content, rawQuizAnswers]);
 
     // Split reading material into chapters - combine multiple H2 sections for longer chapters (~1000 words)
     useEffect(() => {
@@ -93,6 +106,12 @@ export default function WeekPage() {
             try {
                 const progress = await api.getWeekProgress(parseInt(candidateId), weekNumber);
                 setCompletedChapters(progress.completed_chapters);
+                setCompletedTasks(new Set(progress.completed_tasks));
+
+                if (progress.quiz_answers && progress.quiz_answers.length > 0) {
+                    setRawQuizAnswers(progress.quiz_answers);
+                    setQuizSubmitted(true);
+                }
             } catch (error) {
                 console.error('Error fetching progress:', error);
             }

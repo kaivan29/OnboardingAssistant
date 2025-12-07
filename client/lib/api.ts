@@ -207,6 +207,7 @@ export const api = {
         completed_chapters: number[];
         completed_tasks: string[];
         quiz_score: number | null;
+        quiz_answers: number[] | null;
     }> {
         const response = await fetch(`${API_BASE_URL}/api/progress/${candidateId}/week/${weekNumber}`);
 
@@ -244,6 +245,19 @@ export const api = {
             throw new Error('Failed to get file content');
         }
 
+        return response.json();
+    },
+
+    async getCourseProgress(candidateId: number): Promise<{
+        progress: number;
+        tasks_completed: number;
+        total_weeks: number;
+        weeks_progress?: { week_number: number; percent: number; is_complete: boolean }[];
+    }> {
+        const response = await fetch(`${API_BASE_URL}/api/progress/${candidateId}/overall`);
+        if (!response.ok) {
+            throw new Error('Failed to get course progress');
+        }
         return response.json();
     },
 };
