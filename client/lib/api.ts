@@ -6,6 +6,7 @@ export interface ResumeAnalysis {
     experience_level: string;
     strengths: string[];
     learning_areas: string[];
+    ramp_up_expectation?: string;
 }
 
 export interface Candidate {

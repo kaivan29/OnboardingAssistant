@@ -18,15 +18,31 @@ export default function ProfilePage() {
             return;
         }
 
-        const fetchAnalysis = async () => {
+        const pollForAnalysis = async () => {
             try {
-                const status = await api.getCandidateStatus(parseInt(id));
-                if (status.resume_analysis) {
-                    setAnalysis(status.resume_analysis);
-                    setCandidateName(status.name);
-                } else {
-                    // If no analysis yet, redirect to dashboard to wait/poll
-                    router.push('/dashboard');
+                const candidateIdNum = parseInt(id);
+                // Poll for analysis completion
+                let analysisComplete = false;
+                let attempts = 0;
+                const maxAttempts = 60; // 2 minutes max
+
+                while (!analysisComplete && attempts < maxAttempts) {
+                    const status = await api.getCandidateStatus(candidateIdNum);
+
+                    if (status.analysis_complete && status.resume_analysis) {
+                        setAnalysis(status.resume_analysis);
+                        setCandidateName(status.name);
+                        analysisComplete = true;
+                    } else {
+                        attempts++;
+                        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+                    }
+                }
+
+                if (!analysisComplete) {
+                    // Handle timeout - maybe show an error or redirect
+                    console.error('Analysis timed out');
+                    // Optional: set an error state here
                 }
             } catch (error) {
                 console.error('Error fetching profile:', error);
@@ -35,7 +51,7 @@ export default function ProfilePage() {
             }
         };
 
-        fetchAnalysis();
+        pollForAnalysis();
     }, [router]);
 
     if (loading) {
@@ -43,7 +59,8 @@ export default function ProfilePage() {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600 text-lg">Loading profile...</p>
+                    <p className="text-gray-600 text-lg">Analyzing your resume with AI...</p>
+                    <p className="text-sm text-gray-500 mt-2">This usually takes about 30 seconds</p>
                 </div>
             </div>
         );
@@ -75,6 +92,19 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Main Content Column */}
                     <div className="md:col-span-2 space-y-6">
+                        {/* Ramp Up Expectation */}
+                        {analysis.ramp_up_expectation && (
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl shadow-sm p-8 border border-blue-100">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <TrendingUp className="h-6 w-6 text-blue-600" />
+                                    <h2 className="text-xl font-bold text-gray-900">Ramp Up Expectation</h2>
+                                </div>
+                                <p className="text-gray-800 leading-relaxed text-lg italic">
+                                    "{analysis.ramp_up_expectation}"
+                                </p>
+                            </div>
+                        )}
+
                         {/* Background Summary */}
                         <div className="bg-white rounded-2xl shadow-sm p-8 border border-gray-100">
                             <div className="flex items-center gap-3 mb-4">

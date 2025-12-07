@@ -26,24 +26,30 @@ gcloud run deploy grok-onboarding-backend \
   --platform managed \
   --timeout 300 \
   --memory 1Gi \
-  --set-env-vars XAI_API_KEY=$XAI_API_KEY,XAI_BASE_URL=https://api.x.ai/v1,XAI_MODEL=grok-beta
+  --set-env-vars XAI_API_KEY=$XAI_API_KEY,XAI_BASE_URL=https://api.x.ai/v1,XAI_MODEL=grok-4-1-fast-reasoning
 
 BACKEND_URL=$(gcloud run services describe grok-onboarding-backend --region $REGION --format 'value(status.url)')
 echo "✅ Backend deployed at: $BACKEND_URL"
 echo ""
 
 # Deploy Frontend
-echo "� Deploying Frontend..."
+echo " Deploying Frontend..."
 cd ../client
 
+# Build and Deploy Frontend
+echo "🏗️  Building Frontend Container..."
+gcloud builds submit --config cloudbuild.yaml \
+  --substitutions=_NEXT_PUBLIC_API_URL=$BACKEND_URL \
+  .
+
+echo "🚀 Deploying Frontend Service..."
 gcloud run deploy grok-onboarding-frontend \
-  --source . \
+  --image gcr.io/$PROJECT_ID/grok-onboarding-frontend \
   --allow-unauthenticated \
   --region $REGION \
   --platform managed \
   --timeout 60 \
-  --memory 512Mi \
-  --set-env-vars NEXT_PUBLIC_API_URL=$BACKEND_URL
+  --memory 512Mi
 
 FRONTEND_URL=$(gcloud run services describe grok-onboarding-frontend --region $REGION --format 'value(status.url)')
 echo "✅ Frontend deployed at: $FRONTEND_URL"

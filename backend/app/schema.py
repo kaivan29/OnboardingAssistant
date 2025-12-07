@@ -29,6 +29,7 @@ class ResumeAnalysis(BaseModel):
     experience_level: str
     strengths: List[str]
     learning_areas: List[str]
+    ramp_up_expectation: Optional[str] = None
 
 
 class CandidateResponse(BaseModel):

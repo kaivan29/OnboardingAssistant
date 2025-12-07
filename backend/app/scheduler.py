@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import select
+from sqlalchemy import select, or_, cast, String
 
 from app.database import AsyncSessionLocal, CodebaseConfig, Candidate
 from app.services.plan_template_service import plan_template_service
@@ -21,9 +21,14 @@ logger = logging.getLogger(__name__)
 async def analyze_pending_resumes():
     """Background job to analyze resumes that are pending analysis"""
     async with AsyncSessionLocal() as db:
-        # Find candidates without resume analysis
+        # Find candidates without resume analysis (handle both SQL NULL and JSON 'null')
         result = await db.execute(
-            select(Candidate).where(Candidate.resume_analysis == None).limit(5)  # Process 5 at a time
+            select(Candidate).where(
+                or_(
+                    Candidate.resume_analysis == None,
+                    cast(Candidate.resume_analysis, String) == 'null'
+                )
+            ).limit(5)
         )
         pending_candidates = result.scalars().all()
         
@@ -48,42 +53,39 @@ async def analyze_pending_resumes():
                 await db.rollback()
 
 
-def resume_analysis_job():
-    """Sync wrapper for resume analysis job"""
-    asyncio.run(analyze_pending_resumes())
+async def resume_analysis_job():
+    """Async wrapper for resume analysis job"""
+    await analyze_pending_resumes()
 
 
-def master_plan_job():
+async def master_plan_job():
     """Generate/update master plans for all configured codebases"""
-    async def run():
-        async with AsyncSessionLocal() as db:
-            try:
-                # Get all configured code bases
-                result = await db.execute(select(CodebaseConfig))
-                codebases = result.scalars().all()
-                
-                logger.info(f"🔄 Starting master plan refresh for {len(codebases)} codebases")
-                
-                for codebase in codebases:
-                    try:
-                        logger.info(f"  📚 Refreshing master plan for {codebase.name} ({codebase.id})")
-                        
-                        master_plan = await plan_template_service.generate_master_plan(
-                            codebase.id,
-                            db
-                        )
-                        
-                        logger.info(f"  ✅ Master plan updated: {master_plan['id']}")
-                        
-                    except Exception as e:
-                        logger.error(f"  ❌ Failed to refresh master plan for {codebase.id}: {str(e)}")
-                
-                logger.info("✅ Master plan refresh completed")
-                
-            except Exception as e:
-                logger.error(f"❌ Master plan refresh job failed: {str(e)}")
-    
-    asyncio.run(run())
+    async with AsyncSessionLocal() as db:
+        try:
+            # Get all configured code bases
+            result = await db.execute(select(CodebaseConfig))
+            codebases = result.scalars().all()
+            
+            logger.info(f"🔄 Starting master plan refresh for {len(codebases)} codebases")
+            
+            for codebase in codebases:
+                try:
+                    logger.info(f"  📚 Refreshing master plan for {codebase.name} ({codebase.id})")
+                    
+                    master_plan = await plan_template_service.generate_master_plan(
+                        codebase.id,
+                        db
+                    )
+                    
+                    logger.info(f"  ✅ Master plan updated: {master_plan['id']}")
+                    
+                except Exception as e:
+                    logger.error(f"  ❌ Failed to refresh master plan for {codebase.id}: {str(e)}")
+            
+            logger.info("✅ Master plan refresh completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Master plan refresh job failed: {str(e)}")
 
 
 class MasterPlanScheduler:

@@ -350,7 +350,10 @@ async def generate_learning_plan(request: LearningPlanCreate, db: AsyncSession =
 async def get_learning_plan(candidate_id: int, db: AsyncSession = Depends(get_db)):
     """Get learning plan for a candidate"""
     result = await db.execute(
-        select(LearningPlan).where(LearningPlan.candidate_id == candidate_id)
+        select(LearningPlan)
+        .where(LearningPlan.candidate_id == candidate_id)
+        .order_by(desc(LearningPlan.created_at))
+        .limit(1)
     )
     learning_plan = result.scalar_one_or_none()
     
@@ -443,7 +446,10 @@ async def get_weekly_content(
     """Get weekly content (reading, tasks, quiz) - uses master plan or generates on-demand"""
     # Get learning plan
     result = await db.execute(
-        select(LearningPlan).where(LearningPlan.candidate_id == candidate_id)
+        select(LearningPlan)
+        .where(LearningPlan.candidate_id == candidate_id)
+        .order_by(desc(LearningPlan.created_at))
+        .limit(1)
     )
     learning_plan = result.scalar_one_or_none()
     

@@ -16,7 +16,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Set API URL for build (will be overridden by Cloud Run env var)
-ENV NEXT_PUBLIC_API_URL=https://grok-onboarding-backend-<project-id>.run.app
+# Set API URL from build arg
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
 

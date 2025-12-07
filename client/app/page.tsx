@@ -52,8 +52,8 @@ export default function Home() {
 
       toast.success('Resume uploaded! Generating your personalized plan...');
 
-      // Navigate immediately to dashboard - it will handle polling for analysis/plan
-      router.push('/dashboard');
+      // Navigate to profile page for analysis results
+      router.push('/dashboard/profile');
     } catch (error: any) {
       console.error('Upload failed:', error);
 

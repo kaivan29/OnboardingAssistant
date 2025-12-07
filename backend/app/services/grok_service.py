@@ -113,6 +113,50 @@ Focus on technical skills, experience level, and areas where the candidate could
                 analysis = json.loads(json_str)
             else:
                 raise ValueError("Could not parse JSON from Grok response")
+
+        # Generate Ramp Up Expectation based on level
+        try:
+            level = analysis.get("experience_level", "junior").lower()
+            if "senior" in level or "staff" in level or "lead" in level:
+                prompt_file = "senior_engineer_prompt.md"
+            else:
+                prompt_file = "junior_engineer_prompt.md"
+
+            from pathlib import Path
+            # Assuming running from backend root or app root
+            # Try to find the file relative to current file or project root
+            base_path = Path(__file__).parent.parent.parent / "expectation_prompts"
+            prompt_path = base_path / prompt_file
+            
+            if prompt_path.exists():
+                with open(prompt_path, "r") as f:
+                    expectation_context = f.read()
+
+                exp_prompt = f"""Based on the candidate's analysis and the following onboarding philosophy, write a concise (2-3 sentences) "Ramp Up Expectation" message to the candidate.
+                
+                Candidate Background: {analysis.get('background')}
+                Experience Level: {level}
+                
+                Onboarding Philosophy:
+                {expectation_context}
+                
+                The message should set the tone for their first 4 weeks, highlighting what matters most (e.g., specific deep dives for seniors vs. practical tasks for juniors).
+                Directly address the candidate ("You will focus on..."). keep it under 50 words."""
+
+                exp_messages = [
+                    {"role": "system", "content": "You are a thoughtful engineering manager setting expectations for a new hire."},
+                    {"role": "user", "content": exp_prompt}
+                ]
+
+                expectation_text = await self._make_request(exp_messages, temperature=0.5, model=self.resume_model)
+                analysis["ramp_up_expectation"] = expectation_text.strip()
+            else:
+                print(f"Warning: Expectation prompt file not found at {prompt_path}")
+                analysis["ramp_up_expectation"] = "Welcome to the team! We are excited to have you onboard and look forward to seeing your contributions."
+
+        except Exception as e:
+            print(f"Error generating expectation: {e}")
+            analysis["ramp_up_expectation"] = "Welcome to the team! We look forward to your ramp up."
         
         return analysis
     
