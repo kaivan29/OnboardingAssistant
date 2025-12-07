@@ -40,11 +40,7 @@ print_banner
 
 
 
-<<<<<<< HEAD
-APP_ROOT="/Users/zy/Desktop/GrokOnboarding"
-=======
 APP_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
->>>>>>> d3ddd04 (impreove script)
 
 # Helper to check if a port is open
 check_port() {
