@@ -38,6 +38,68 @@ spinner() {
 
 print_banner
 
+
+
+APP_ROOT="/Users/zy/Desktop/GrokOnboarding"
+
+# Helper to check if a port is open
+check_port() {
+    lsof -i :$1 >/dev/null 2>&1
+}
+
+wait_for_service() {
+    local port=$1
+    local name=$2
+    local max_retries=30
+    local count=0
+
+    echo -n "Waiting for $name to be ready..."
+    while ! check_port $port; do
+        sleep 1
+        count=$((count + 1))
+        if [ $count -ge $max_retries ]; then
+            echo -e " ${RED}[FAILED]${NC}"
+            echo -e "${RED}[ERROR]${NC} $name failed to start on port $port."
+            exit 1
+        fi
+    done
+    echo -e " ${GREEN}[OK]${NC}"
+}
+
+start_servers() {
+    echo -e "${BLUE}[SYS]${NC} Checking system services..."
+
+    # Check Backend
+    if check_port 8000; then
+        echo -e "${GREEN}[OK]${NC} Backend operational (Port 8000)."
+    else
+        echo -e "${YELLOW}[INIT]${NC} Starting Backend Neural Core..."
+        cd "$APP_ROOT/backend" || exit 1
+        if [ -f "venv/bin/activate" ]; then
+            source venv/bin/activate
+        else 
+            echo -e "${RED}[ERROR]${NC} Python virtual environment not found in $APP_ROOT/backend/venv"
+            exit 1
+        fi
+        # Run in background, silence output or redirect to log
+        nohup uvicorn main:app --reload --port 8000 > "$APP_ROOT/backend/server.log" 2>&1 &
+        wait_for_service 8000 "Backend"
+    fi
+
+    # Check Frontend
+    if check_port 3000; then
+        echo -e "${GREEN}[OK]${NC} Frontend operational (Port 3000)."
+    else
+        echo -e "${YELLOW}[INIT]${NC} Starting Frontend Interface..."
+        cd "$APP_ROOT/client" || exit 1
+        # Run in background
+        nohup npm run dev > "$APP_ROOT/client/client.log" 2>&1 &
+        wait_for_service 3000 "Frontend"
+    fi
+}
+
+start_servers
+
 PROJECT=$1
 XHACK_DIR="$HOME/xHack"
 
