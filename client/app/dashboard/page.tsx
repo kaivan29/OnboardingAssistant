@@ -17,6 +17,7 @@ export default function Dashboard() {
     const [tasksDue] = useState(5); // Example tasks due
     const [loadingStatus, setLoadingStatus] = useState('Checking resume analysis...');
     const [activeTab, setActiveTab] = useState<'path' | 'codebase'>('path');
+    const [candidateName, setCandidateName] = useState('User');
 
     useEffect(() => {
         if (candidateId) {
@@ -51,6 +52,10 @@ export default function Dashboard() {
 
                 while (!analysisComplete && attempts < maxAttempts) {
                     const status = await api.getCandidateStatus(candidateIdNum);
+
+                    if (status.name) {
+                        setCandidateName(status.name.split(' ')[0]); // Use first name
+                    }
 
                     if (status.analysis_complete) {
                         analysisComplete = true;
@@ -125,8 +130,6 @@ export default function Dashboard() {
         );
     }
 
-    const userFirstName = "User";
-
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
@@ -171,7 +174,7 @@ export default function Dashboard() {
 
                     <div className="flex-1">
                         <h1 className="text-4xl font-semibold text-black mb-3">
-                            Welcome back, {userFirstName}!
+                            Welcome back, {candidateName}!
                         </h1>
                         <p className="text-gray-600 text-lg mb-6">
                             Continue your learning journey today. You have{" "}

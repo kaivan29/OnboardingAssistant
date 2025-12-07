@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FileUpload } from '@/components/ui/file-upload';
 import { MultiStepLoader } from '@/components/ui/multi-step-loader';
 import { IconSquareRoundedX } from '@tabler/icons-react';
@@ -28,9 +28,19 @@ interface AnalysisResult {
 
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+
+  // Check for codebase query param
+  useEffect(() => {
+    const codebase = searchParams.get('codebase');
+    if (codebase) {
+      localStorage.setItem('codebaseUrl', codebase);
+      toast.success(`Context set to: ${codebase}`);
+    }
+  }, [searchParams]);
 
   const handleFileUpload = useCallback(async (uploadedFiles: File[]) => {
     if (uploadedFiles.length === 0) return;
@@ -48,7 +58,11 @@ export default function Home() {
 
       // Store candidate ID for dashboard
       localStorage.setItem('candidateId', candidate.id.toString());
-      localStorage.setItem('codebaseUrl', 'https://github.com/facebook/rocksdb');
+
+      // Keep existing codebaseUrl if set via query param, otherwise default to rocksdb
+      if (!localStorage.getItem('codebaseUrl')) {
+        localStorage.setItem('codebaseUrl', 'rocksdb');
+      }
 
       toast.success('Resume uploaded! Generating your personalized plan...');
 

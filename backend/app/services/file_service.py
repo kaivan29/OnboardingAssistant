@@ -88,4 +88,7 @@ class FileService:
             except Exception:
                 return None
 
-file_service = FileService()
+
+# Use ~/xHack as the default storage directory
+x_hack_dir = os.path.expanduser("~/xHack")
+file_service = FileService(storage_dir=x_hack_dir)
